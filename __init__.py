@@ -72,7 +72,7 @@ class OneWireAdvanced(SensorActive):
 
                 # Sleep until update required again
                 if waketime <= time.time() + 0.1:
-                    cbpi.notify("OneWire Error", "Update interval is too short", timeout=None, type="danger")
-                    raise ValueError("OneWire - Update interval is too short")
+                    cbpi.notify("OneWire Error", "Update interval is too short", timeout=None, type="warning")
+                    print("[%s] %s update interval is too short" % (waketime, address))
                 else:
                     self.sleep(waketime - time.time())
