@@ -29,7 +29,7 @@ def get_temp(address):
 class OneWireAdvanced(SensorActive):
     a_address = Property.Select("Sensor address", get_sensors())
     b_bias = Property.Number("Sensor bias", True, 0.0)
-    c_update_interval = Property.Number("Update interval", True, 2.0)
+    c_update_interval = Property.Number("Update interval", True, 2.5)
     d_low_filter = Property.Number("Low value filter threshold", True, 0.0)
     e_high_filter = Property.Number("High value filter threshold", True, 100.0)
     g_alert = Property.Select("Alert when values filtered?", ["True", "False"])
@@ -50,10 +50,10 @@ class OneWireAdvanced(SensorActive):
 
         # Error checking
         if update_interval <= 0.0:
-            self.notify("OneWire Error", "Update interval must be positive", timeout=None, type="danger")
+            cbpi.notify("OneWire Error", "Update interval must be positive", timeout=None, type="danger")
             raise ValueError("OneWire - Update interval must be positive")
         elif low_filter >= high_filter:
-            self.notify("OneWire Error", "Low filter must be < high filter")
+            cbpi.notify("OneWire Error", "Low filter must be < high filter")
             raise ValueError("OneWire - Low filter must be < high filter")
         else:
             while self.is_running():
@@ -67,12 +67,12 @@ class OneWireAdvanced(SensorActive):
                     if low_filter < temp < high_filter:
                         self.data_received(temp)
                     elif alert:
-                        self.notify("OneWire Warning", "%s reading of %s filtered" % (address, temp), time=update_interval*5, type="warning")
+                        cbpi.notify("OneWire Warning", "%s reading of %s filtered" % (address, temp), time=update_interval*5, type="warning")
                         print("[%s] %s reading of %s filtered" % (waketime, address, temp))
 
                 # Sleep until update required again
                 if waketime <= time.time() + 0.25:
-                    self.notify("OneWire Error", "Update interval is too short", timeout=None, type="danger")
+                    cbpi.notify("OneWire Error", "Update interval is too short", timeout=None, type="danger")
                     raise ValueError("OneWire - Update interval is too short")
                 else:
                     self.sleep(waketime - time.time())
