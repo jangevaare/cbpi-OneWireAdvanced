@@ -58,11 +58,12 @@ class OneWireAdvanced(SensorActive):
         else:
             while self.is_running():
                 waketime = time.time() + update_interval
+                rawtemp = get_temp(address)
                 if self.get_config_parameter("unit", "C") == "C":
-                    temp = round(get_temp(address), 2)
+                    temp = round(rawtemp + bias, 2)
                 else:
-                    temp = round((get_temp(address) * 9/5) + 32, 2)
-                if temp != None:
+                    temp = round((rawtemp * 9/5) + 32 + bias, 2)
+                if rawtemp != None:
                     if low_filter < temp < high_filter:
                         self.data_received(temp)
                     elif alert:
