@@ -29,7 +29,7 @@ def get_temp(address):
 class OneWireAdvanced(SensorActive):
     a_address = Property.Select("Sensor address", get_sensors())
     b_bias = Property.Number("Sensor bias", True, 0.0)
-    c_update_interval = Property.Number("Update interval", True, 2.5)
+    c_update_interval = Property.Number("Update interval", True, 5.0)
     d_low_filter = Property.Number("Low value filter threshold", True, 0.0)
     e_high_filter = Property.Number("High value filter threshold", True, 100.0)
     g_alert = Property.Select("Alert when values filtered?", ["True", "False"])
@@ -59,11 +59,11 @@ class OneWireAdvanced(SensorActive):
             while self.is_running():
                 waketime = time.time() + update_interval
                 rawtemp = get_temp(address)
-                if self.get_config_parameter("unit", "C") == "C":
-                    temp = round(rawtemp + bias, 2)
-                else:
-                    temp = round((rawtemp * 9/5) + 32 + bias, 2)
                 if rawtemp != None:
+                    if self.get_config_parameter("unit", "C") == "C":
+                        temp = round(rawtemp + bias, 2)
+                    else:
+                        temp = round((rawtemp * 9/5) + 32 + bias, 2)
                     if low_filter < temp < high_filter:
                         self.data_received(temp)
                     elif alert:
@@ -71,7 +71,7 @@ class OneWireAdvanced(SensorActive):
                         print("[%s] %s reading of %s filtered" % (waketime, address, temp))
 
                 # Sleep until update required again
-                if waketime <= time.time() + 0.25:
+                if waketime <= time.time() + 0.1:
                     cbpi.notify("OneWire Error", "Update interval is too short", timeout=None, type="danger")
                     raise ValueError("OneWire - Update interval is too short")
                 else:
