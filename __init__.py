@@ -32,7 +32,8 @@ class OneWireAdvanced(SensorActive):
     c_update_interval = Property.Number("Update interval", True, 5.0)
     d_low_filter = Property.Number("Low value filter threshold", True, 0.0)
     e_high_filter = Property.Number("High value filter threshold", True, 100.0)
-    g_alert = Property.Select("Alert when values filtered?", ["True", "False"])
+    f_notify = Property.Select("Notify when values filtered?", ["True", "False"])
+    g_notification_timeout = Property.Number("Notification duration", True, 5000, description="Notification duration in milliseconds")
 
     def get_unit(self):
         return "°C" if self.get_config_parameter("unit", "C") == "C" else "°F"
@@ -46,14 +47,18 @@ class OneWireAdvanced(SensorActive):
         update_interval = float(self.c_update_interval)
         low_filter = float(self.d_low_filter)
         high_filter = float(self.e_high_filter)
-        alert = bool(self.g_alert)
+        notify = bool(self.f_notify)
+        notification_timeout = float(self.g_notification_timeout)
 
         # Error checking
-        if update_interval <= 0.0:
+        if notification_timeout <= 0.0:
+            cbpi.notify("OneWire Error", "Notification timeout must be positive", timeout=None, type="danger")
+            raise ValueError("OneWire - Notification timeout must be positive")
+        elif update_interval <= 0.0:
             cbpi.notify("OneWire Error", "Update interval must be positive", timeout=None, type="danger")
             raise ValueError("OneWire - Update interval must be positive")
         elif low_filter >= high_filter:
-            cbpi.notify("OneWire Error", "Low filter must be < high filter")
+            cbpi.notify("OneWire Error", "Low filter must be < high filter", timeout=None, type="danger")
             raise ValueError("OneWire - Low filter must be < high filter")
         else:
             while self.is_running():
@@ -66,13 +71,21 @@ class OneWireAdvanced(SensorActive):
                         temp = round((rawtemp * 9/5) + 32 + bias, 2)
                     if low_filter < temp < high_filter:
                         self.data_received(temp)
-                    elif alert:
-                        cbpi.notify("OneWire Warning", "%s reading of %s filtered" % (address, temp), time=update_interval*5, type="warning")
-                        print("[%s] %s reading of %s filtered" % (waketime, address, temp))
+                    elif notify:
+                        cbpi.notify("OneWire Warning", "%s reading of %s filtered" % (address, temp), timeout=notification_timeout, type="warning")
+                        cbpi.app.logger.info("[%s] %s reading of %s filtered" % (waketime, address, temp))
 
                 # Sleep until update required again
                 if waketime <= time.time() + 0.1:
-                    cbpi.notify("OneWire Error", "Update interval is too short", timeout=None, type="warning")
-                    print("[%s] %s update interval is too short" % (waketime, address))
+                    cbpi.notify("OneWire Warning", "Reading of %s could not complete within update interval" % (address), timeout=notification_timeout, type="warning")
+                    cbpi.app.logger.info("[%s] reading of %s could not complete within update interval" % (waketime, address))
                 else:
                     self.sleep(waketime - time.time())
+
+    @classmethod
+    def init_global(self):
+        try:
+            call(["modprobe", "w1-gpio"])
+            call(["modprobe", "w1-therm"])
+        except Exception as e:
+            pass
