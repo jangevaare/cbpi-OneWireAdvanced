@@ -1,11 +1,17 @@
 # -*- coding: utf-8 -*-
-import os, time
+import os, time, subprocess
 from modules import cbpi
 from modules.core.hardware import SensorActive
 from modules.core.props import Property
 
 
-# Retrieve list of sensor addresses
+def ifelse_celcius(x, y):
+    if cbpi.get_config_parameter("unit", "C") == "C":
+        return x
+    else:
+        return y
+
+
 def get_sensors():
     try:
         arr = []
@@ -17,26 +23,56 @@ def get_sensors():
         return []
 
 
-# Get temperature for a sensor with a specific address
+def set_precision(precision, address):
+    if not 9 <= precision <= 12:
+        raise ValueError("The given sensor precision '{0}' is out of range (9-12)".format(precision))
+    exitcode = subprocess.call("echo {0} > /sys/bus/w1/devices/{1}/w1_slave".format(precision, address), shell=True)
+    if exitcode != 0:
+        raise UserWarning("Failed to change resolution to {0} bit. You might have to be root to change the precision".format(precision))
+
+
 def get_temp(address):
-    with open('/sys/bus/w1/devices/w1_bus_master1/%s/w1_slave' % address, 'r') as content_file:
-        content = content_file.read()
-        if (content.split('\n')[0].split(' ')[11] == "YES"):
-            return float(content.split("=")[-1]) / 1000
+    attempts = 0
+    temp = 9999
+    # Bitbang the 1-wire interface.
+    s = subprocess.check_output('cat /sys/bus/w1/devices/%s/w1_slave' % address, shell=True).strip()
+    lines = s.split('\n')
+    line0 = lines[0].split()
+    if line0[-1] == 'YES':  # CRC check was good.
+        line1 = lines[1].split()
+        temp = float(line1[-1][2:])/1000
+    return temp
+
+
+# Property descriptions
+bias_description = "Sensor bias may be positive or negative."
+
+alpha_description = "The parameter α determines the relative weighting of temperature readings in an exponential moving average. α must be >0 and <=1. At α=1, all weight is placed on the current reading. T_i = α*t_i + (1-α)*T_i-1)"
+
+precision_description_C = "DS18B20 sensors can be set to provide 9 bit (0.5°C, 93.75ms conversion), 10 bit (0.25°C, 187.5ms conversion), 11 bit (0.125°C, 375 ms conversion), or 12 bit precision (0.0625°C, 750ms conversion)."
+
+precision_description_F = "DS18B20 sensors can be set to provide 9 bit (0.9°F, 93.75ms conversion), 10 bit (0.45°F, 187.5ms conversion), 11 bit (0.225°F, 375 ms conversion), or 12 bit precision (0.1125°F, 750ms conversion)."
+
+low_filter_description = "Values below the low value filter threshold will be ignored. Units automatically selected."
+
+high_filter_description = "Values above the high value filter threshold will be ignored. Units automatically selected."
 
 
 @cbpi.sensor
 class OneWireAdvanced(SensorActive):
-    a_address = Property.Select("Sensor address", get_sensors())
-    b_bias = Property.Number("Sensor bias", True, 0.0)
-    c_update_interval = Property.Number("Update interval", True, 5.0)
-    d_low_filter = Property.Number("Low value filter threshold", True, 0.0)
-    e_high_filter = Property.Number("High value filter threshold", True, 100.0)
-    f_notify = Property.Select("Notify when values filtered?", ["True", "False"])
-    g_notification_timeout = Property.Number("Notification duration", True, 5000, description="Notification duration in milliseconds")
+    a_address = Property.Select("Address", get_sensors())
+    b_bias = Property.Number(ifelse_celcius("Bias (°C)", "Bias (°F)"), True, 0.0, description=bias_description)
+    b_alpha = Property.Number("Exponential moving average parameter (α)", True, 1.0, description=alpha_description)
+    c_precision = Property.Select("Precision (bits)", [9,10,11,12], description=ifelse_celcius(precision_description_C, precision_description_F))
+    c_update_interval = Property.Number("Update interval (ms)", True, 5000)
+    d_low_filter = Property.Number(ifelse_celcius("Low value filter threshold (°C)", "Low value filter threshold (°F)"), True, ifelse_celcius(0,32), description = low_filter_description)
+    e_high_filter = Property.Number(ifelse_celcius("High value filter threshold (°C)", "High value filter threshold (°F)"), True, ifelse_celcius(100,212), description = high_filter_description)
+    f_notify1 = Property.Select("Notify when values filtered?", ["True", "False"])
+    f_notify2 = Property.Select("Notify when reading did not complete within update interval?", ["True", "False"])
+    g_notification_timeout = Property.Number("Notification duration (ms)", True, 5000, description="Notification duration in milliseconds")
 
     def get_unit(self):
-        return "°C" if self.get_config_parameter("unit", "C") == "C" else "°F"
+        return ifelse_celcius("°C", "°F")
 
     def stop(self):
         pass
@@ -44,14 +80,20 @@ class OneWireAdvanced(SensorActive):
     def execute(self):
         address = self.a_address
         bias = float(self.b_bias)
-        update_interval = float(self.c_update_interval)
+        alpha = float(self.b_alpha)
+        precision = int(self.c_precision)
+        update_interval = float(self.c_update_interval)/1000.0
         low_filter = float(self.d_low_filter)
         high_filter = float(self.e_high_filter)
-        notify = bool(self.f_notify)
+        notify1 = bool(self.f_notify1)
+        notify2 = bool(self.f_notify2)
         notification_timeout = float(self.g_notification_timeout)
 
         # Error checking
-        if notification_timeout <= 0.0:
+        if not 0.0 < alpha <= 1.0:
+            cbpi.notify("OneWire Error", "α must be >0 and <= 1", timeout=None, type="danger")
+            raise ValueError("OneWire - α must be >0 and <= 1")
+        elif notification_timeout <= 0.0:
             cbpi.notify("OneWire Error", "Notification timeout must be positive", timeout=None, type="danger")
             raise ValueError("OneWire - Notification timeout must be positive")
         elif update_interval <= 0.0:
@@ -61,24 +103,40 @@ class OneWireAdvanced(SensorActive):
             cbpi.notify("OneWire Error", "Low filter must be < high filter", timeout=None, type="danger")
             raise ValueError("OneWire - Low filter must be < high filter")
         else:
+            # Set precision in volatile SRAM
+            set_precision(precision, address)
+
+            # Initialize previous value for exponential moving average
+            last_temp = None
+
+            # Running loop
             while self.is_running():
                 waketime = time.time() + update_interval
-                rawtemp = get_temp(address)
-                if rawtemp != None:
+                current_temp = get_temp(address)
+                if current_temp != None:
                     if self.get_config_parameter("unit", "C") == "C":
-                        temp = round(rawtemp + bias, 2)
+                        current_temp = current_temp + bias
                     else:
-                        temp = round((rawtemp * 9/5) + 32 + bias, 2)
-                    if low_filter < temp < high_filter:
-                        self.data_received(temp)
-                    elif notify:
-                        cbpi.notify("OneWire Warning", "%s reading of %s filtered" % (address, temp), timeout=notification_timeout, type="warning")
-                        cbpi.app.logger.info("[%s] %s reading of %s filtered" % (waketime, address, temp))
+                        current_temp = (current_temp * 9/5) + 32 + bias
+                    if low_filter < current_temp < high_filter:
+                        if last_temp != None:
+                            exp_temp = current_temp*alpha + last_temp*(1.0-alpha)
+                            self.data_received(round(exp_temp, 2))
+                            last_temp = exp_temp
+                        else:
+                            self.data_received(round(current_temp, 2))
+                            last_temp = current_temp
+                    else:
+                        last_temp = None
+                        cbpi.app.logger.info("[%s] %s reading of %s filtered" % (waketime, address, round(current_temp, 2)))
+                        if notify1:
+                            cbpi.notify("OneWire Warning", "%s reading of %s filtered" % (address, round(current_temp, 2)), timeout=notification_timeout, type="warning")
 
                 # Sleep until update required again
-                if waketime <= time.time() + 0.1:
-                    cbpi.notify("OneWire Warning", "Reading of %s could not complete within update interval" % (address), timeout=notification_timeout, type="warning")
+                if waketime <= time.time() + 0.02:
                     cbpi.app.logger.info("[%s] reading of %s could not complete within update interval" % (waketime, address))
+                    if notify2:
+                        cbpi.notify("OneWire Warning", "Reading of %s could not complete within update interval" % (address), timeout=notification_timeout, type="warning")
                 else:
                     self.sleep(waketime - time.time())
 
