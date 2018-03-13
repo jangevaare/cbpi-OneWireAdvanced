@@ -123,7 +123,7 @@ class OneWireAdvanced(SensorActive):
                 if current_temp != None:
                     # A temperature of 85 is a communication error code
                     if current_temp == 85.0:
-                        cbpi.notify("OneWire Warning", "Communication error with %s detected" % (address, round(current_temp, 3)), timeout=notification_timeout, type="warning")
+                        cbpi.notify("OneWire Warning", "Communication error with %s detected" % address), timeout=notification_timeout, type="warning")
                         cbpi.app.logger.info("[%s] Communication error with %s detected" % (waketime, address))
                     # Proceed with valid temperature readings
                     else:
