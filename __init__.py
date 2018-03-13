@@ -78,7 +78,7 @@ class OneWireAdvanced(SensorActive):
         return ifelse_celcius("°C", "°F")
 
     def stop(self):
-        pass
+        self.stop()
 
     def execute(self):
         address = self.a_address
@@ -142,12 +142,12 @@ class OneWireAdvanced(SensorActive):
                             else:
                                 self.data_received(round(current_temp, 3))
                                 last_temp = current_temp
-                                
+
                         # Outside filter limits...
                         else:
                             # Add to logger
                             cbpi.app.logger.info("[%s] %s reading of %s filtered" % (waketime, address, round(current_temp, 3)))
-                            
+
                             # Produce a notification if requested
                             if notify1:
                                 cbpi.notify("OneWire Warning", "%s reading of %s filtered" % (address, round(current_temp, 3)), timeout=notification_timeout, type="warning")
@@ -156,7 +156,7 @@ class OneWireAdvanced(SensorActive):
                 if waketime <= time.time():
                     # Add to logger
                     cbpi.app.logger.info("[%s] reading of %s could not complete within update interval" % (waketime, address))
-                    
+
                     # Produce a notification if requested
                     if notify2:
                         cbpi.notify("OneWire Warning", "Reading of %s could not complete within update interval" % address, timeout=notification_timeout, type="warning")
