@@ -133,7 +133,7 @@ class OneWireAdvanced(SensorActive):
                         else:
                             current_temp = (current_temp * 9/5) + 32 + bias
 
-                        # Check if temp is within filter limits
+                        # If inside filter limits...
                         if low_filter < current_temp < high_filter:
                             if last_temp != None:
                                 exp_temp = current_temp*alpha + last_temp*(1.0-alpha)
@@ -142,16 +142,25 @@ class OneWireAdvanced(SensorActive):
                             else:
                                 self.data_received(round(current_temp, 3))
                                 last_temp = current_temp
+                                
+                        # Outside filter limits...
                         else:
+                            # Add to logger
                             cbpi.app.logger.info("[%s] %s reading of %s filtered" % (waketime, address, round(current_temp, 3)))
+                            
+                            # Produce a notification if requested
                             if notify1:
                                 cbpi.notify("OneWire Warning", "%s reading of %s filtered" % (address, round(current_temp, 3)), timeout=notification_timeout, type="warning")
 
                 # Sleep until update required again
                 if waketime <= time.time():
+                    # Add to logger
                     cbpi.app.logger.info("[%s] reading of %s could not complete within update interval" % (waketime, address))
+                    
+                    # Produce a notification if requested
                     if notify2:
-                        cbpi.notify("OneWire Warning", "Reading of %s could not complete within update interval" % (address), timeout=notification_timeout, type="warning")
+                        cbpi.notify("OneWire Warning", "Reading of %s could not complete within update interval" % address, timeout=notification_timeout, type="warning")
+                # Zzzz
                 else:
                     self.sleep(waketime - time.time())
 
