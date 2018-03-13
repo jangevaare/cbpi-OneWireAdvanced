@@ -32,7 +32,7 @@ class OneWireAdvanced(SensorActive):
     c_update_interval = Property.Number("Update interval", True, 5.0)
     d_low_filter = Property.Number("Low value filter threshold", True, 0.0)
     e_high_filter = Property.Number("High value filter threshold", True, 100.0)
-    f_notify = Property.Select("Notify when values filtered?", ["True", "False"])
+    f_notify = Property.Select("Notifications", ["True", "False"])
     g_notification_timeout = Property.Number("Notification duration", True, 5000, description="Notification duration in milliseconds")
 
     def get_unit(self):
@@ -71,13 +71,15 @@ class OneWireAdvanced(SensorActive):
                         temp = round((rawtemp * 9/5) + 32 + bias, 2)
                     if low_filter < temp < high_filter:
                         self.data_received(temp)
-                    elif notify:
-                        cbpi.notify("OneWire Warning", "%s reading of %s filtered" % (address, temp), timeout=notification_timeout, type="warning")
+                    else:
+                        if notify:
+                            cbpi.notify("OneWire Warning", "%s reading of %s filtered" % (address, temp), timeout=notification_timeout, type="warning")
                         cbpi.app.logger.info("[%s] %s reading of %s filtered" % (waketime, address, temp))
 
                 # Sleep until update required again
-                if waketime <= time.time() + 0.1:
-                    cbpi.notify("OneWire Warning", "Reading of %s could not complete within update interval" % (address), timeout=notification_timeout, type="warning")
+                if waketime <= time.time():
+                    if notify:
+                        cbpi.notify("OneWire Warning", "Reading of %s could not complete within update interval" % (address), timeout=notification_timeout, type="warning")
                     cbpi.app.logger.info("[%s] reading of %s could not complete within update interval" % (waketime, address))
                 else:
                     self.sleep(waketime - time.time())
