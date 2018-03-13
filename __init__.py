@@ -35,12 +35,15 @@ def get_temp(address):
     attempts = 0
     temp = 9999
     # Bitbang the 1-wire interface.
-    s = subprocess.check_output('cat /sys/bus/w1/devices/%s/w1_slave' % address, shell=True).strip()
-    lines = s.split('\n')
-    line0 = lines[0].split()
-    if line0[-1] == 'YES':  # CRC check was good.
-        line1 = lines[1].split()
-        temp = float(line1[-1][2:])/1000
+    try:
+        s = subprocess.check_output('cat /sys/bus/w1/devices/%s/w1_slave' % address, shell=True).strip()
+        lines = s.split('\n')
+        line0 = lines[0].split()
+        if line0[-1] == 'YES':  # CRC check was good.
+            line1 = lines[1].split()
+            temp = float(line1[-1][2:])/1000
+    except:
+        pass
     return temp
 
 
@@ -104,7 +107,11 @@ class OneWireAdvanced(SensorActive):
             raise ValueError("OneWire - Low filter must be < high filter")
         else:
             # Set precision in volatile SRAM
-            set_precision(precision, address)
+            try:
+                set_precision(precision, address)
+            except:
+                cbpi.notify("OneWire Warning", "Could not change precision of %s, may have insufficient permissions" % address, timeout=None, type="warning")
+                cbpi.app.logger.info("[%s] Could not change precision of %s, may have insufficient permissions" % (time.time(), address))
 
             # Initialize previous value for exponential moving average
             last_temp = None
@@ -114,26 +121,34 @@ class OneWireAdvanced(SensorActive):
                 waketime = time.time() + update_interval
                 current_temp = get_temp(address)
                 if current_temp != None:
-                    if self.get_config_parameter("unit", "C") == "C":
-                        current_temp = current_temp + bias
+                    # A temperature of 85 is a communication error code
+                    if current_temp == 85.0:
+                        cbpi.notify("OneWire Warning", "Communication error with %s detected" % (address, round(current_temp, 3)), timeout=notification_timeout, type="warning")
+                        cbpi.app.logger.info("[%s] Communication error with %s detected" % (waketime, address))
+                    # Proceed with valid temperature readings
                     else:
-                        current_temp = (current_temp * 9/5) + 32 + bias
-                    if low_filter < current_temp < high_filter:
-                        if last_temp != None:
-                            exp_temp = current_temp*alpha + last_temp*(1.0-alpha)
-                            self.data_received(round(exp_temp, 2))
-                            last_temp = exp_temp
+                        # Convert current temp and add bias if necessary
+                        if self.get_config_parameter("unit", "C") == "C":
+                            current_temp = current_temp + bias
                         else:
-                            self.data_received(round(current_temp, 2))
-                            last_temp = current_temp
-                    else:
-                        last_temp = None
-                        cbpi.app.logger.info("[%s] %s reading of %s filtered" % (waketime, address, round(current_temp, 2)))
-                        if notify1:
-                            cbpi.notify("OneWire Warning", "%s reading of %s filtered" % (address, round(current_temp, 2)), timeout=notification_timeout, type="warning")
+                            current_temp = (current_temp * 9/5) + 32 + bias
+
+                        # Check if temp is within filter limits
+                        if low_filter < current_temp < high_filter:
+                            if last_temp != None:
+                                exp_temp = current_temp*alpha + last_temp*(1.0-alpha)
+                                self.data_received(round(exp_temp, 3))
+                                last_temp = exp_temp
+                            else:
+                                self.data_received(round(current_temp, 3))
+                                last_temp = current_temp
+                        else:
+                            cbpi.app.logger.info("[%s] %s reading of %s filtered" % (waketime, address, round(current_temp, 3)))
+                            if notify1:
+                                cbpi.notify("OneWire Warning", "%s reading of %s filtered" % (address, round(current_temp, 3)), timeout=notification_timeout, type="warning")
 
                 # Sleep until update required again
-                if waketime <= time.time() + 0.02:
+                if waketime <= time.time():
                     cbpi.app.logger.info("[%s] reading of %s could not complete within update interval" % (waketime, address))
                     if notify2:
                         cbpi.notify("OneWire Warning", "Reading of %s could not complete within update interval" % (address), timeout=notification_timeout, type="warning")
@@ -145,5 +160,5 @@ class OneWireAdvanced(SensorActive):
         try:
             call(["modprobe", "w1-gpio"])
             call(["modprobe", "w1-therm"])
-        except Exception as e:
+        except:
             pass
