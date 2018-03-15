@@ -6,4 +6,7 @@ This CraftBeerPi 3.0 plugin provides a new sensor type called OneWireAdvanced. T
  * exponential moving average,
  * low and high value filters,
  * update interval, and,
- * an options for alerts when values are filtered.
+ * an alert options.
+
+## Preview
+![image](OneWireAdvanced.png)

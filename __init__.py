@@ -191,11 +191,3 @@ class OneWireAdvanced(SensorActive):
                 # Zzzz
                 else:
                     self.sleep(waketime - time.time())
-
-    @classmethod
-    def init_global(self):
-        try:
-            call(["modprobe", "w1-gpio"])
-            call(["modprobe", "w1-therm"])
-        except:
-            pass
