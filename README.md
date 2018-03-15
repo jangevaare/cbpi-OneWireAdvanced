@@ -9,4 +9,4 @@ This CraftBeerPi 3.0 plugin provides a new sensor type called OneWireAdvanced. T
  * an alert options.
 
 ## Preview
-![image](OneWireAdvanced.png)
+![Sensor configuration options](OneWireAdvanced.png | width=500)
