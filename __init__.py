@@ -31,18 +31,27 @@ def set_precision(precision, address):
         raise UserWarning("Failed to change resolution to {0} bit. You might have to be root to change the precision".format(precision))
 
 
+# def get_temp(address):
+#     # Bitbang the 1-wire interface.
+#     try:
+#         s = subprocess.check_output('cat /sys/bus/w1/devices/%s/w1_slave' % address, shell=True).strip()
+#         lines = s.split('\n')
+#         line0 = lines[0].split()
+#         if line0[-1] == 'YES':  # CRC check was good.
+#             line1 = lines[1].split()
+#             temp = float(line1[-1][2:])/1000.0
+#     except:
+#         temp = 9999.9
+#     return temp
+
+
 def get_temp(address):
-    # Bitbang the 1-wire interface.
-    try:
-        s = subprocess.check_output('cat /sys/bus/w1/devices/%s/w1_slave' % address, shell=True).strip()
-        lines = s.split('\n')
-        line0 = lines[0].split()
-        if line0[-1] == 'YES':  # CRC check was good.
-            line1 = lines[1].split()
-            temp = float(line1[-1][2:])/1000.0
-    except:
-        temp = 9999.9
-    return temp
+    with open('/sys/bus/w1/devices/w1_bus_master1/%s/w1_slave' % address, 'r') as content_file:
+        content = content_file.read()
+        if (content.split('\n')[0].split(' ')[11] == "YES"):
+            return float(content.split("=")[-1]) / 1000
+        else:
+            return None
 
 
 # Property descriptions
