@@ -151,7 +151,12 @@ class OneWireAdvanced(SensorActive):
                     warn_count = 0
 
                 waketime = time.time() + update_interval
-                current_temp = get_temp(address)
+                try:
+                    current_temp = get_temp(address)
+                except:
+                    warn_count += 1
+                    cbpi.notify("OneWire Warning", "Exception encountered when getting temperature of %s" % address, type="warning")
+                    cbpi.app.logger.info("[%s] Exception with %s" % (waketime, address))
                 if current_temp != None:
                     # A temperature of 85 is a communication error code
                     if current_temp == 85.0:
